@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  # AI Agent - SIMULATOR režim (ZDARMA, default)
+  ai-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.extended
+    container_name: ai-agent-demo
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - PYTHONUNBUFFERED=1
+      - LLM_MODE=simulator  # Změnit na 'openai' pro GPT
+      # - OPENAI_API_KEY=sk-your-key-here  # Odkomentovat pro OpenAI
+    restart: unless-stopped
+
+  # AI Agent - OPENAI režim (vyžaduje API klíč)
+  ai-agent-openai:
+    build:
+      context: .
+      dockerfile: Dockerfile.extended
+    container_name: ai-agent-openai
+    ports:
+      - "8001:8000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - PYTHONUNBUFFERED=1
+      - LLM_MODE=openai
+      - OPENAI_API_KEY=${OPENAI_API_KEY}  # Z .env souboru
+    restart: unless-stopped
+    profiles:
+      - openai  # Spustí se jen s --profile openai
+
+  # N8N workflow editor
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n-agent
+    ports:
+      - "5678:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./n8n_ai_agent_workflow.json:/workflows/agent.json:ro
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=false
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+    restart: unless-stopped
+    profiles:
+      - full
+
+  # SQLite Web prohlížeč
+  sqlite-web:
+    image: coleifer/sqlite-web:latest
+    container_name: sqlite-web
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/data
+    command: /data/products.db
+    restart: unless-stopped
+    profiles:
+      - full
+
+volumes:
+  n8n_data:

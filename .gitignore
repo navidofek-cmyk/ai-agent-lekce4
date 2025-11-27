@@ -1,0 +1,33 @@
+# Soubory obsahující citlivé informace - NEcommitovat!
+my_api_key.py
+.env
+
+# Docker runtime
+data/
+*.db
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker backup
+Dockerfile.backup
+
+# Logs
+*.log

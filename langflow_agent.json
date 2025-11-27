@@ -1,0 +1,129 @@
+{
+  "name": "AI Agent s Databází",
+  "description": "Agent pracující s databází produktů přes LLM",
+  "nodes": [
+    {
+      "id": "chat_input",
+      "type": "ChatInput",
+      "position": {"x": 100, "y": 300},
+      "data": {
+        "node": {
+          "template": {
+            "input_value": {
+              "value": ""
+            }
+          },
+          "description": "Vstup uživatelského dotazu"
+        }
+      }
+    },
+    {
+      "id": "python_tool_1",
+      "type": "PythonFunction",
+      "position": {"x": 300, "y": 200},
+      "data": {
+        "node": {
+          "template": {
+            "code": {
+              "value": "import sqlite3\nimport json\n\ndef query_database(question: str) -> str:\n    \"\"\"\n    Nástroj pro dotazování SQLite databáze produktů\n    \"\"\"\n    conn = sqlite3.connect('products.db')\n    cursor = conn.cursor()\n    \n    # Získání všech produktů\n    cursor.execute('SELECT * FROM products')\n    products = cursor.fetchall()\n    \n    # Statistiky\n    cursor.execute('''\n        SELECT \n            COUNT(*) as count,\n            AVG(price) as avg_price,\n            MIN(price) as min_price,\n            MAX(price) as max_price,\n            SUM(stock) as total_stock\n        FROM products\n    ''')\n    stats = cursor.fetchone()\n    \n    conn.close()\n    \n    result = {\n        'total_products': stats[0],\n        'avg_price': round(stats[1], 2) if stats[1] else 0,\n        'min_price': stats[2],\n        'max_price': stats[3],\n        'total_stock': stats[4],\n        'products': [{\n            'id': p[0],\n            'name': p[1],\n            'category': p[2],\n            'price': p[3],\n            'stock': p[4]\n        } for p in products[:10]]  # Prvních 10 produktů\n    }\n    \n    return json.dumps(result, ensure_ascii=False)\n\nreturn query_database(input_value)"
+            }
+          },
+          "description": "Databázový nástroj"
+        }
+      }
+    },
+    {
+      "id": "python_tool_2",
+      "type": "PythonFunction",
+      "position": {"x": 300, "y": 400},
+      "data": {
+        "node": {
+          "template": {
+            "code": {
+              "value": "import json\nfrom typing import Dict, List\n\ndef calculate_statistics(data: str) -> str:\n    \"\"\"\n    Výpočetní nástroj pro agregace a statistiky\n    \"\"\"\n    try:\n        products = json.loads(data)\n        \n        if isinstance(products, dict) and 'products' in products:\n            items = products['products']\n        else:\n            items = products\n        \n        if not items:\n            return json.dumps({'error': 'Žádná data'})\n        \n        prices = [p['price'] for p in items if 'price' in p]\n        stocks = [p['stock'] for p in items if 'stock' in p]\n        \n        categories = {}\n        for p in items:\n            cat = p.get('category', 'Unknown')\n            if cat not in categories:\n                categories[cat] = {'count': 0, 'total_value': 0}\n            categories[cat]['count'] += 1\n            categories[cat]['total_value'] += p.get('price', 0) * p.get('stock', 0)\n        \n        result = {\n            'total_items': len(items),\n            'price_avg': round(sum(prices) / len(prices), 2) if prices else 0,\n            'price_min': min(prices) if prices else 0,\n            'price_max': max(prices) if prices else 0,\n            'total_stock': sum(stocks),\n            'categories': categories\n        }\n        \n        return json.dumps(result, ensure_ascii=False)\n    except Exception as e:\n        return json.dumps({'error': str(e)})\n\nreturn calculate_statistics(input_value)"
+            }
+          },
+          "description": "Výpočetní nástroj"
+        }
+      }
+    },
+    {
+      "id": "llm_chain",
+      "type": "LLMChain",
+      "position": {"x": 500, "y": 300},
+      "data": {
+        "node": {
+          "template": {
+            "llm": {
+              "type": "ChatOpenAI",
+              "model_name": "gpt-3.5-turbo",
+              "temperature": 0.7
+            },
+            "prompt": {
+              "value": "Jsi AI asistent pracující s databází produktů.\n\nMáš k dispozici tyto nástroje:\n1. query_database - získá data z databáze\n2. calculate_statistics - vypočítá statistiky\n\nUživatelský dotaz: {input}\n\nData z databáze:\n{database_data}\n\nStatistiky:\n{statistics}\n\nOdpověz na otázku uživatele v češtině. Buď konkrétní a používej data."
+            }
+          },
+          "description": "LLM pro generování odpovědí"
+        }
+      }
+    },
+    {
+      "id": "chat_output",
+      "type": "ChatOutput",
+      "position": {"x": 700, "y": 300},
+      "data": {
+        "node": {
+          "template": {
+            "output_value": {
+              "value": ""
+            }
+          },
+          "description": "Výstup odpovědi"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source": "chat_input",
+      "target": "python_tool_1",
+      "sourceHandle": "output",
+      "targetHandle": "input"
+    },
+    {
+      "source": "python_tool_1",
+      "target": "python_tool_2",
+      "sourceHandle": "output",
+      "targetHandle": "input"
+    },
+    {
+      "source": "python_tool_1",
+      "target": "llm_chain",
+      "sourceHandle": "output",
+      "targetHandle": "database_data"
+    },
+    {
+      "source": "python_tool_2",
+      "target": "llm_chain",
+      "sourceHandle": "output",
+      "targetHandle": "statistics"
+    },
+    {
+      "source": "chat_input",
+      "target": "llm_chain",
+      "sourceHandle": "output",
+      "targetHandle": "input"
+    },
+    {
+      "source": "llm_chain",
+      "target": "chat_output",
+      "sourceHandle": "output",
+      "targetHandle": "input"
+    }
+  ],
+  "viewport": {
+    "x": 0,
+    "y": 0,
+    "zoom": 1
+  }
+}

@@ -1,0 +1,360 @@
+{
+  "name": "AI Agent s Databází a LLM",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ask-agent",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "ai-agent-webhook"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.response }}",
+        "options": {}
+      },
+      "id": "respond-to-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1640, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT * FROM products",
+        "options": {}
+      },
+      "id": "database-query",
+      "name": "Databázový dotaz",
+      "type": "n8n-nodes-base.sqlite",
+      "typeVersion": 1,
+      "position": [660, 300],
+      "credentials": {
+        "sqlite": {
+          "id": "1",
+          "name": "SQLite Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "user_question",
+              "name": "user_question",
+              "value": "={{ $json.body.question || $json.query.question }}",
+              "type": "string"
+            },
+            {
+              "id": "database_data",
+              "name": "database_data",
+              "value": "={{ JSON.stringify($input.all()) }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "prepare-data",
+      "name": "Příprava dat",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.2,
+      "position": [860, 300]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4",
+        "messages": {
+          "values": [
+            {
+              "content": "=Jsi AI asistent, který pomáhá s dotazy nad databází produktů.\n\nMáš k dispozici následující data z databáze:\n{{ $json.database_data }}\n\nUživatel se ptá: {{ $json.user_question }}\n\nProveď analýzu dat a odpověz na otázku uživatele v češtině. Pokud je potřeba provést výpočty (průměr, suma, počet), proveď je. Buď konkrétní a přesný.",
+              "role": "user"
+            }
+          ]
+        },
+        "options": {
+          "temperature": 0.7,
+          "maxTokens": 500
+        }
+      },
+      "id": "openai-llm",
+      "name": "OpenAI LLM",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [1060, 300],
+      "credentials": {
+        "openAiApi": {
+          "id": "2",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "response",
+              "name": "response",
+              "value": "={{ $json.message.content }}",
+              "type": "string"
+            },
+            {
+              "id": "metadata",
+              "name": "metadata",
+              "value": "={{ JSON.stringify({\n  timestamp: new Date().toISOString(),\n  question: $('Příprava dat').item.json.user_question,\n  model: 'gpt-4'\n}) }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "format-response",
+      "name": "Formátovat odpověď",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.2,
+      "position": [1260, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.user_question }}",
+              "operation": "contains",
+              "value2": "statistika"
+            }
+          ]
+        }
+      },
+      "id": "check-statistics",
+      "name": "Potřeba statistiky?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1060, 500]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT \n  COUNT(*) as total_products,\n  AVG(price) as avg_price,\n  MIN(price) as min_price,\n  MAX(price) as max_price,\n  SUM(stock) as total_stock\nFROM products",
+        "options": {}
+      },
+      "id": "statistics-query",
+      "name": "Statistický dotaz",
+      "type": "n8n-nodes-base.sqlite",
+      "typeVersion": 1,
+      "position": [1260, 500],
+      "credentials": {
+        "sqlite": {
+          "id": "1",
+          "name": "SQLite Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "// Nástroj pro výpočet agregací\nconst data = items[0].json.database_data;\nconst parsedData = JSON.parse(data);\n\n// Výpočet statistik\nconst products = parsedData.map(item => item.json);\nconst totalProducts = products.length;\nconst avgPrice = products.reduce((sum, p) => sum + parseFloat(p.price || 0), 0) / totalProducts;\nconst totalStock = products.reduce((sum, p) => sum + parseInt(p.stock || 0), 0);\nconst minPrice = Math.min(...products.map(p => parseFloat(p.price || 0)));\nconst maxPrice = Math.max(...products.map(p => parseFloat(p.price || 0)));\n\nreturn [{\n  json: {\n    statistics: {\n      totalProducts,\n      avgPrice: avgPrice.toFixed(2),\n      totalStock,\n      minPrice,\n      maxPrice\n    }\n  }\n}];"
+      },
+      "id": "calculation-tool",
+      "name": "Výpočetní nástroj",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [860, 500]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=INSERT INTO query_log (question, response, timestamp) VALUES ('{{ $json.user_question }}', '{{ $json.response }}', datetime('now'))",
+        "options": {}
+      },
+      "id": "log-query",
+      "name": "Zalogovat dotaz",
+      "type": "n8n-nodes-base.sqlite",
+      "typeVersion": 1,
+      "position": [1460, 300],
+      "credentials": {
+        "sqlite": {
+          "id": "1",
+          "name": "SQLite Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://api.example.com/external-tool",
+        "method": "POST",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "={{ $json.user_question }}"
+            },
+            {
+              "name": "data",
+              "value": "={{ $json.database_data }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "external-api-tool",
+      "name": "Externí API nástroj",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [660, 500]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT * FROM products WHERE category = '{{ $json.body.category }}' ORDER BY price {{ $json.body.order || 'ASC' }}",
+        "options": {}
+      },
+      "id": "filtered-query",
+      "name": "Filtrovaný dotaz",
+      "type": "n8n-nodes-base.sqlite",
+      "typeVersion": 1,
+      "position": [660, 100],
+      "credentials": {
+        "sqlite": {
+          "id": "1",
+          "name": "SQLite Database"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// AI Agent Tool - Rozhodování o typu dotazu\nconst question = $input.item.json.user_question || $input.item.json.body?.question;\n\n// Detekce typu dotazu\nlet queryType = 'general';\nif (question.toLowerCase().includes('průměr') || question.toLowerCase().includes('celkem') || question.toLowerCase().includes('kolik')) {\n  queryType = 'statistics';\n} else if (question.toLowerCase().includes('kategorie') || question.toLowerCase().includes('filtr')) {\n  queryType = 'filtered';\n} else if (question.toLowerCase().includes('detail') || question.toLowerCase().includes('informace o')) {\n  queryType = 'detail';\n}\n\nreturn { \n  queryType,\n  needsDatabase: true,\n  needsLLM: true,\n  needsExternalTool: false\n};"
+      },
+      "id": "agent-decision-tool",
+      "name": "Agent rozhodovací nástroj",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Agent rozhodovací nástroj",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent rozhodovací nástroj": {
+      "main": [
+        [
+          {
+            "node": "Databázový dotaz",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Databázový dotaz": {
+      "main": [
+        [
+          {
+            "node": "Příprava dat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Příprava dat": {
+      "main": [
+        [
+          {
+            "node": "OpenAI LLM",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Výpočetní nástroj",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI LLM": {
+      "main": [
+        [
+          {
+            "node": "Formátovat odpověď",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formátovat odpověď": {
+      "main": [
+        [
+          {
+            "node": "Zalogovat dotaz",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Zalogovat dotaz": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Výpočetní nástroj": {
+      "main": [
+        [
+          {
+            "node": "Potřeba statistiky?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Potřeba statistiky?": {
+      "main": [
+        [
+          {
+            "node": "Statistický dotaz",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2025-11-27T10:00:00.000Z",
+  "versionId": "1"
+}
