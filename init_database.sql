@@ -94,7 +94,7 @@ INSERT OR IGNORE INTO products (id, name, category, price, stock, description, b
 (75, 'Lacoste Polo Classic', 'Oblečení', 2299, 35, 'Bílé s logem', 'Lacoste'),
 (76, 'Barbour Beaufort Jacket', 'Oblečení', 9999, 10, 'Voskovaná bunda', 'Barbour'),
 (77, 'Canada Goose Expedition', 'Oblečení', 34999, 3, 'Extrémně teplá parka', 'Canada Goose'),
-(78, 'Arc\'teryx Beta AR', 'Oblečení', 14999, 7, 'Gore-Tex bunda', 'Arc\'teryx'),
+(78, 'Arcteryx Beta AR', 'Oblečení', 14999, 7, 'Gore-Tex bunda', 'Arcteryx'),
 (79, 'Fjallraven Kanken', 'Oblečení', 2499, 40, 'Batoh, klasický', 'Fjallraven'),
 (80, 'Herschel Little America', 'Oblečení', 2799, 30, 'Batoh, černý', 'Herschel');
 

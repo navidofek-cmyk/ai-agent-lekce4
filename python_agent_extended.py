@@ -23,41 +23,47 @@ class DatabaseTool:
         self._init_database()
     
     def _init_database(self):
-        """Inicializace databáze s ukázkovými daty"""
+        """Inicializace databáze z SQL souboru"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS products (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                category TEXT NOT NULL,
-                price REAL NOT NULL,
-                stock INTEGER NOT NULL,
-                description TEXT
-            )
-        ''')
+        # Zkontrolovat jestli už existují data
+        cursor.execute("""
+            SELECT name FROM sqlite_master 
+            WHERE type='table' AND name='products'
+        """)
+        table_exists = cursor.fetchone()
         
-        cursor.execute('SELECT COUNT(*) FROM products')
-        if cursor.fetchone()[0] == 0:
-            products = [
-                ('Notebook Dell XPS', 'Elektronika', 29990, 5, 'Výkonný ultrabook'),
-                ('iPhone 15 Pro', 'Elektronika', 34990, 8, 'Nejnovější iPhone'),
-                ('Samsung Galaxy S24', 'Elektronika', 24990, 12, 'Android smartphone'),
-                ('Sony Sluchátka', 'Elektronika', 9990, 15, 'Bezdrátová sluchátka'),
-                ('iPad Pro', 'Elektronika', 35990, 6, 'Tablet s M2 chipem'),
-                ('Zimní bunda', 'Oblečení', 5990, 20, 'Zateplená bunda'),
-                ('Běžecké boty Nike', 'Oblečení', 3490, 25, 'Sportovní obuv'),
-                ('Mikina Adidas', 'Oblečení', 1490, 30, 'Bavlněná mikina'),
-                ('Bio káva', 'Potraviny', 249, 50, 'Zrnková káva 250g'),
-                ('Organický med', 'Potraviny', 189, 40, 'Lesní med 500g'),
-                ('Čokoláda Lindt', 'Potraviny', 59, 100, 'Hořká čokoláda'),
-                ('Dyson vysavač', 'Domácnost', 18990, 7, 'Bezdrátový vysavač'),
-            ]
-            cursor.executemany(
-                'INSERT INTO products (name, category, price, stock, description) VALUES (?, ?, ?, ?, ?)',
-                products
-            )
+        if table_exists:
+            cursor.execute('SELECT COUNT(*) FROM products')
+            has_data = cursor.fetchone()[0] > 0
+        else:
+            has_data = False
+        
+        # Pokud databáze neexistuje nebo je prázdná, načíst SQL soubor
+        if not has_data:
+            sql_file = 'init_database.sql'
+            if os.path.exists(sql_file):
+                print(f"📥 Načítám databázi z {sql_file}...")
+                with open(sql_file, 'r', encoding='utf-8') as f:
+                    sql_script = f.read()
+                    cursor.executescript(sql_script)
+                print(f"✅ Databáze inicializována")
+            else:
+                print(f"⚠️  Soubor {sql_file} nenalezen, používám základní data")
+                # Fallback - základní struktura
+                cursor.execute('''
+                    CREATE TABLE IF NOT EXISTS products (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name TEXT NOT NULL,
+                        category TEXT NOT NULL,
+                        price REAL NOT NULL,
+                        stock INTEGER NOT NULL,
+                        description TEXT,
+                        brand TEXT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                ''')
         
         conn.commit()
         conn.close()
@@ -197,9 +203,8 @@ class OpenAILLM:
         self.available = False
         
         try:
-            import openai
-            self.openai = openai
-            self.openai.api_key = api_key
+            from openai import OpenAI
+            self.client = OpenAI(api_key=api_key)
             self.available = True
             print("✅ OpenAI API připojeno")
         except ImportError:
@@ -232,7 +237,7 @@ Kategorie:
 
 Odpověz na otázku uživatele v češtině, konkrétně a na základě těchto dat."""
 
-            response = self.openai.ChatCompletion.create(
+            response = self.client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[
                     {"role": "system", "content": context},
